@@ -21,3 +21,8 @@ node_modules
 
 # cli
 dist
+
+# Speedrun Ethereum Challenge Exclusions
+.cursor
+.github
+.husky

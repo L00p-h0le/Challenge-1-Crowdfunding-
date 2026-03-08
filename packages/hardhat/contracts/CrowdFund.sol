@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.20; // Do not change the solidity version as it negatively impacts submission grading
+pragma solidity ^0.8.20; // Do not change the solidity version as it negatively impacts submission grading
 
 import "hardhat/console.sol";
 import "./FundingRecipient.sol";
@@ -10,10 +10,19 @@ contract CrowdFund {
     /////////////////
 
     // Errors go here...
+    error NotOpenToWithdraw();
+    error WithdrawTransferFailed(address to , uint256 amount);
+    error TooEarly(uint deadline , uint currentTimestamp);
+    error AlreadyExecuted();
 
     //////////////////////
     /// State Variables //
     //////////////////////
+    
+    mapping(address => uint256) public balances;
+    bool public openToWithdraw ;
+    uint public deadline = block.timestamp + 2 hours;
+    uint public constant threshold = 1 ether;
 
     FundingRecipient public fundingRecipient;
 
@@ -22,13 +31,15 @@ contract CrowdFund {
     ////////////////
 
     // Events go here...
+    event Contribution( address , uint256);
 
     ///////////////////
     /// Modifiers /////
     ///////////////////
 
     modifier notCompleted() {
-        _;
+        if(fundingRecipient.completed()) {revert AlreadyExecuted();}
+         _;
     }
 
     ///////////////////
@@ -43,19 +54,45 @@ contract CrowdFund {
     /// Functions /////
     ///////////////////
 
-    function contribute() public payable {}
+    function contribute() public payable notCompleted() {
+        balances[msg.sender] += msg.value;
+        emit Contribution(msg.sender , msg.value);
 
-    function withdraw() public {}
+    }
 
-    function execute() public {}
+    function withdraw() public notCompleted() {
 
-    receive() external payable {}
+        if(!openToWithdraw) {revert NotOpenToWithdraw();}
+
+        uint balance = balances[msg.sender];
+        balances[msg.sender] = 0;
+
+        (bool success,) = msg.sender.call{value: balance}("");
+        if(!success){revert WithdrawTransferFailed(msg.sender , balance);}
+    }
+
+    function execute() public notCompleted() {
+
+        if(block.timestamp <= deadline) {revert TooEarly(deadline , block.timestamp);}
+
+        if(address(this).balance >= threshold){
+            fundingRecipient.complete{value: address(this).balance}();
+        }
+        else{
+            openToWithdraw = true;
+        }
+
+    }
+
+    receive() external payable {
+        contribute();
+    }
 
     ////////////////////////
     /// View Functions /////
     ////////////////////////
 
     function timeLeft() public view returns (uint256) {
-        return 0;
+        return deadline > block.timestamp ? deadline - block.timestamp : 0;
     }
 }
